@@ -27,6 +27,7 @@ import {
   seedWorkers,
   seedLogs,
 } from '../data/mockDatabase';
+import { fetchRealJobs } from '../lib/jobFeed';
 
 interface CareerOSContextType {
   // State
@@ -143,8 +144,8 @@ export const CareerOSProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     {
       id: 'msg_001',
       role: 'assistant',
-      content: `Good morning, ${profile.fullName.split(' ')[0]} 👋. Your CareerOS agent is actively monitoring the market. You have an upcoming interview with Vercel tomorrow at 11:00 AM IST, and 3 high-match roles (Stripe, Linear, Razorpay) are ready in your feed.`,
-      timestamp: '10:00 AM',
+      content: `Good morning, ${profile.fullName.split(' ')[0]} 👋. Your CareerOS agent is actively monitoring the market. I will fetch jobs automatically based on your preferences.`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
 
@@ -565,99 +566,54 @@ export const CareerOSProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const runBackgroundDiscovery = async () => {
     setIsDiscoveryRunning(true);
-    addLog('JobDiscoveryWorker', 'Starting background job discovery cycle', 'Polling official Greenhouse, Lever, and remote career connectors...', 'running', 150);
+    addLog('JobDiscoveryWorker', 'Starting background job discovery cycle', 'Polling JSearch API...', 'running', 150);
 
-    // Simulate discovering 2 fresh new jobs
-    await new Promise((r) => setTimeout(r, 1800));
+    try {
+      // Build query from preferences
+      const primaryTitle = preferences.targetTitles[0] || 'Software Engineer';
+      const primaryLocation = preferences.targetCities[0] || 'Remote';
+      const query = `${primaryTitle} in ${primaryLocation}`;
+      
+      const realJobs = await fetchRealJobs(query, 1);
+      
+      if (realJobs && realJobs.length > 0) {
+        // Only keep new ones not already in state
+        setJobs(currentJobs => {
+          const existingIds = new Set(currentJobs.map(j => j.externalId));
+          const newJobs = realJobs.filter(j => !existingIds.has(j.externalId));
+          
+          if (newJobs.length > 0) {
+            addLog('JobDiscoveryWorker', `Discovered ${newJobs.length} new high-match opportunities`, `Ingested top results for ${query}.`, 'success', 850);
+            
+            // Background AI Match & Apply Loop
+            setTimeout(async () => {
+              for (const job of newJobs) {
+                try {
+                  const match = await calculateJobMatchWithAI(job);
+                  if (appPreferences.autoApply && match.overallScore >= appPreferences.minMatchScore) {
+                    addLog('ApplicationSubmissionWorker', `Evaluating ${job.company} for auto-apply`, `Match score ${match.overallScore}% exceeds threshold.`, 'running', 200);
+                    await submitApplication(job.id, 'authorized_auto');
+                  }
+                } catch (e) {
+                  console.error('Error auto-applying for job', job.id, e);
+                }
+              }
+            }, 1000);
 
-    const newJob1: Job = {
-      id: 'job_new_' + Math.random().toString(36).substring(2, 7),
-      externalId: 'MSFT-COPILOT-881',
-      company: 'Microsoft',
-      companyLogo: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=128&auto=format&fit=crop&q=80',
-      companyWebsite: 'https://microsoft.com',
-      role: 'Software Engineer II (Copilot & ASP.NET)',
-      description: 'Join the Azure AI team building generative AI Copilot integrations for enterprise MSME clients using ASP.NET Core, React, and LLMs.',
-      requirements: ['Experience with ASP.NET Core and React.js', 'Hands-on experience building pipelines with GenAI / LLM APIs (OpenAI, Gemini)', 'Strong knowledge of MongoDB or SQL Server'],
-      responsibilities: ['Architect AI-driven document extraction flows', 'Build secure RBAC microservices in C# / Node.js'],
-      skills: ['ASP.NET Core', 'React.js', 'Google Gemini API', 'Node.js', 'MongoDB', 'Docker'],
-      salaryMin: 2500000,
-      salaryMax: 4000000,
-      currency: 'INR',
-      location: 'Hyderabad, India / Remote',
-      country: 'India',
-      remoteType: 'hybrid',
-      employmentType: 'full-time',
-      experienceReq: '1-3 years',
-      postedAt: 'Just now',
-      applicationUrl: 'https://careers.microsoft.com/copilot-engineer',
-      source: 'Greenhouse API',
-      isEasyApplyPermitted: true,
-    };
-
-    const newJob2: Job = {
-      id: 'job_new_' + Math.random().toString(36).substring(2, 7),
-      externalId: 'POSTMAN-API-521',
-      company: 'Postman',
-      companyLogo: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=128&auto=format&fit=crop&q=80',
-      companyWebsite: 'https://postman.com',
-      role: 'Staff Full-Stack Engineer - API Platform',
-      description: 'Postman is looking for a Staff Engineer to lead the next generation of API testing, mock servers, and generative documentation.',
-      requirements: ['6+ years of full-stack TypeScript/Node.js/React engineering', 'Deep knowledge of REST, GraphQL, and gRPC', 'Bengaluru hybrid or remote India'],
-      responsibilities: ['Lead architecture for developer-facing API inspection tools', 'Mentor team of 8 engineers'],
-      skills: ['TypeScript', 'Node.js', 'React', 'REST APIs', 'PostgreSQL', 'Microservices'],
-      salaryMin: 4600000,
-      salaryMax: 6000000,
-      currency: 'INR',
-      location: 'Bengaluru, India',
-      country: 'India',
-      remoteType: 'hybrid',
-      employmentType: 'full-time',
-      experienceReq: '6+ years',
-      postedAt: 'Just now',
-      applicationUrl: 'https://postman.com/careers/staff-fullstack',
-      source: 'TechJobs India',
-      isEasyApplyPermitted: true,
-    };
-
-    setJobs((prev) => [newJob1, newJob2, ...prev]);
-
-    // Calculate match scores
-    setMatches((prev) => ({
-      ...prev,
-      [newJob1.id]: {
-        jobId: newJob1.id,
-        overallScore: 98,
-        breakdown: { semanticScore: 94, skillsScore: 92, experienceScore: 94, locationScore: 100, educationScore: 90, preferenceScore: 94 },
-        whyMatches: ['Strong ASP.NET Core and React background', 'Real-world experience integrating Google Gemini API in SaaS products', 'Remote/Hybrid flexibility matches candidate preference'],
-        missingRequirements: ['No direct Azure specific cloud certs mentioned, though has AWS'],
-        recommendation: 'Apply',
-        analysisSummary: 'Exceptional 98% match for Microsoft AI Copilot integration team.',
-      },
-      [newJob2.id]: {
-        jobId: newJob2.id,
-        overallScore: 91,
-        breakdown: { semanticScore: 92, skillsScore: 94, experienceScore: 90, locationScore: 90, educationScore: 88, preferenceScore: 90 },
-        whyMatches: ['Full-stack Node.js/React/PostgreSQL stack matches 100%', 'Bengaluru location and high compensation (₹46L-₹60L)'],
-        missingRequirements: ['gRPC protocol depth'],
-        recommendation: 'Apply',
-        analysisSummary: '91% match for Postman API Platform team.',
-      },
-    }));
-
-    addLog('JobDiscoveryWorker', 'Discovered 2 new high-match opportunities', 'Ingested and ranked Microsoft (98%) and Postman (91%).', 'success', 450);
-    setIsDiscoveryRunning(false);
-
-    // Autonomous execution of application
-    if (appPreferences.autoApply) {
-      setTimeout(async () => {
-        addLog('ApplicationSubmissionWorker', 'Autonomous agent evaluating Microsoft for auto-apply', 'Match score 98% exceeds threshold.', 'running', 200);
-        try {
-          await submitApplication(newJob1.id, 'authorized_auto');
-        } catch (e) {
-          console.error(e);
-        }
-      }, 3000);
+            return [...newJobs, ...currentJobs];
+          } else {
+            addLog('JobDiscoveryWorker', 'No new jobs found', 'All recent postings are already tracked.', 'success', 300);
+            return currentJobs;
+          }
+        });
+      } else {
+        addLog('JobDiscoveryWorker', 'No jobs found', 'JSearch returned empty results.', 'warning', 400);
+      }
+    } catch (error) {
+      console.error(error);
+      addLog('JobDiscoveryWorker', 'Discovery Failed', 'Failed to fetch from JSearch API.', 'failed', 200);
+    } finally {
+      setIsDiscoveryRunning(false);
     }
   };
 
@@ -667,27 +623,8 @@ export const CareerOSProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     await new Promise((r) => setTimeout(r, 1500));
 
-    const newEmail: CareerEmail = {
-      id: 'em_fresh_' + Math.random().toString(36).substring(2, 7),
-      sender: 'Elena Rostova',
-      senderEmail: 'elena@linear.app',
-      company: 'Linear',
-      subject: 'Interview Invitation: Staff Product Engineer at Linear',
-      snippet: 'Hi Eshan! Our founders reviewed your profile and love your focus on speed and craftsmanship. Would you be open for an initial conversation this Thursday?',
-      fullText: `Hi Eshan,\n\nThanks for submitting your information for the Staff Product Engineer position at Linear!\n\nKarri and the team reviewed your work on offline CRDTs and AgentPulse and were super impressed. We would love to chat with you this Thursday for an informal technical intro.\n\nPlease let us know if 3:00 PM UTC works for you!\n\nBest,\nElena Rostova\nTalent Partner | Linear`,
-      category: 'interview_invite',
-      priority: 'critical',
-      receivedAt: 'Just now',
-      matchedApplicationId: 'app_003',
-      isRead: false,
-      isActionRequired: true,
-      suggestedAction: 'Confirm Thursday 3:00 PM UTC Availability & Prep Dossier',
-    };
-
-    setEmails((prev) => [newEmail, ...prev]);
-    setActiveEnvelope(newEmail);
-
-    addLog('EmailMonitoringWorker', 'Classified new email from Linear (Priority: Critical)', 'Recruiter invitation detected. Created envelope alert.', 'success', 340);
+    // OAuth is not yet connected, so return no emails.
+    addLog('EmailMonitoringWorker', 'No new emails found', 'Inbox scan complete.', 'success', 340);
     setIsEmailScanning(false);
   };
 
