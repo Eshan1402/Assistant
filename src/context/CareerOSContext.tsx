@@ -28,6 +28,7 @@ import {
   seedLogs,
 } from '../data/mockDatabase';
 import { fetchRealJobs } from '../lib/jobFeed';
+import { supabase } from '../lib/supabase';
 
 interface CareerOSContextType {
   // State
@@ -197,6 +198,74 @@ export const CareerOSProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [emails]);
 
+  const addLog = useCallback((workerName: string, action: string, details: string, status: 'success' | 'running' | 'failed' | 'warning' = 'success', durationMs: number = 180) => {
+    const newLog: SystemLog = {
+      taskId: 'TSK-' + Math.floor(1000 + Math.random() * 9000),
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      workerName,
+      action,
+      status,
+      durationMs,
+      details,
+    };
+    setLogs((prev) => [newLog, ...prev.slice(0, 49)]);
+  }, []);
+
+  // Set up Supabase Realtime Job Subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel('public:jobs')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'jobs' },
+        (payload) => {
+          const newJobRecord = payload.new;
+          
+          // Map DB record back to local Job format
+          const newJob: Job = {
+            id: newJobRecord.id,
+            externalId: newJobRecord.external_id,
+            company: newJobRecord.company,
+            role: newJobRecord.role,
+            description: newJobRecord.description || '',
+            requirements: newJobRecord.requirements || [],
+            skills: newJobRecord.skills || [],
+            salaryMin: newJobRecord.salary_min || 0,
+            salaryMax: newJobRecord.salary_max || 0,
+            currency: newJobRecord.currency || 'USD',
+            location: newJobRecord.location || '',
+            remoteType: newJobRecord.remote_type || 'onsite',
+            employmentType: newJobRecord.employment_type || 'full-time',
+            postedAt: newJobRecord.posted_at || 'Recently',
+            applicationUrl: newJobRecord.application_url || '',
+            source: newJobRecord.source || 'Unknown',
+            country: 'Unknown',
+            experienceReq: 'Not Specified',
+            isEasyApplyPermitted: false,
+            responsibilities: [],
+          };
+          
+          setJobs((currentJobs) => {
+            // Avoid duplicates
+            if (currentJobs.some(j => j.id === newJob.id || j.externalId === newJob.externalId)) {
+              return currentJobs;
+            }
+            addLog('RealtimeWorker', 'New job received from Supabase', `Received broadcast for ${newJob.role} at ${newJob.company}`, 'success', 50);
+            return [newJob, ...currentJobs];
+          });
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Successfully subscribed to real-time job updates');
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [addLog]);
+
   // Autonomous Agent Background Loop
   useEffect(() => {
     // Only run if autoApply is enabled
@@ -211,19 +280,6 @@ export const CareerOSProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     return () => clearInterval(autonomousInterval);
   }, [appPreferences.autoApply, isDiscoveryRunning]);
-
-  const addLog = useCallback((workerName: string, action: string, details: string, status: 'success' | 'running' | 'failed' | 'warning' = 'success', durationMs: number = 180) => {
-    const newLog: SystemLog = {
-      taskId: 'TSK-' + Math.floor(1000 + Math.random() * 9000),
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      workerName,
-      action,
-      status,
-      durationMs,
-      details,
-    };
-    setLogs((prev) => [newLog, ...prev.slice(0, 49)]);
-  }, []);
 
   const updateProfile = (updated: Partial<CandidateProfile>) => {
     setProfile((prev) => ({ ...prev, ...updated }));
@@ -585,6 +641,30 @@ export const CareerOSProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (newJobs.length > 0) {
             addLog('JobDiscoveryWorker', `Discovered ${newJobs.length} new high-match opportunities`, `Ingested top results for ${query}.`, 'success', 850);
             
+            // Push to Supabase for realtime broadcasting
+            supabase.from('jobs').upsert(
+              newJobs.map(job => ({
+                id: job.id,
+                external_id: job.externalId,
+                company: job.company,
+                role: job.role,
+                description: job.description,
+                requirements: job.requirements,
+                skills: job.skills,
+                salary_min: job.salaryMin,
+                salary_max: job.salaryMax,
+                currency: job.currency,
+                location: job.location,
+                remote_type: job.remoteType,
+                employment_type: job.employmentType,
+                posted_at: job.postedAt,
+                application_url: job.applicationUrl,
+                source: job.source,
+              }))
+            ).then(({ error }) => {
+              if (error) console.error('Error inserting jobs to Supabase:', error);
+            });
+
             // Background AI Match & Apply Loop
             setTimeout(async () => {
               for (const job of newJobs) {

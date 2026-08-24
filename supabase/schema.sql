@@ -63,6 +63,12 @@ create policy "Users can view their own profile." on profiles for select using (
 create policy "Users can update their own profile." on profiles for update using (auth.uid() = id);
 
 create policy "Users can view all jobs." on jobs for select using (true);
+create policy "Users can insert jobs." on jobs for insert with check (true);
+create policy "Users can update jobs." on jobs for update using (true);
+
+-- Enable real-time for jobs table
+alter publication supabase_realtime add table public.jobs;
+
 create policy "Users can view their own applications." on applications for select using (auth.uid() = user_id);
 create policy "Users can insert their own applications." on applications for insert with check (auth.uid() = user_id);
 create policy "Users can update their own applications." on applications for update using (auth.uid() = user_id);
