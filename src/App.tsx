@@ -26,13 +26,11 @@ const CareerOSMain: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#090416] text-white flex flex-col font-sans selection:bg-purple-600 selection:text-white relative overflow-x-hidden">
-      {/* Dynamic Cosmic Background Gradients */}
-      <div className="fixed top-0 left-1/4 w-[600px] h-[600px] bg-purple-900/15 rounded-full blur-[140px] pointer-events-none -z-10" />
-      <div className="fixed bottom-0 right-1/4 w-[500px] h-[500px] bg-indigo-900/15 rounded-full blur-[140px] pointer-events-none -z-10" />
+    <div className="min-h-screen bg-[#ebf3fa] text-gray-800 flex flex-col font-sans selection:bg-doraemon-blue selection:text-white relative overflow-x-hidden">
+      {/* Light studio canvas background */}
 
       {/* Top Navbar */}
-      <Navbar />
+
 
       {/* Main App Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8">

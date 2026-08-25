@@ -2,8 +2,8 @@
 
 @layer base {
   body {
-    background-color: #0b061a;
-    color: #f3f4f6;
+    background-color: #ebf3fa;
+    color: #1f2937;
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     overflow-x: hidden;
   }
@@ -277,14 +277,14 @@
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0d0822;
+  background: #e2e8f0;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3b246f;
+  background: #94a3b8;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #6b3ba8;
+  background: #64748b;
 }
 
 @keyframes float {
@@ -313,4 +313,21 @@
 .animate-envelope {
   animation: envelopeBounce 2s ease-in-out infinite;
 }
+
+/* Doraemon Theme Utilities */
+.bg-doraemon-blue { background-color: #008be3; }
+.text-doraemon-blue { color: #008be3; }
+.border-doraemon-blue { border-color: #008be3; }
+
+.bg-doraemon-red { background-color: #ff3838; }
+.text-doraemon-red { color: #ff3838; }
+
+.bg-doraemon-gold { background-color: #ffcc00; }
+.text-doraemon-gold { color: #ffcc00; }
+
+.bg-doraemon-pink { background-color: #ff5ea8; }
+.text-doraemon-pink { color: #ff5ea8; }
+
+.bg-doraemon-green { background-color: #10b981; }
+.text-doraemon-green { color: #10b981; }
 
